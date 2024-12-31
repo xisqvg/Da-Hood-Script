@@ -1,0 +1,170 @@
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local Mouse = Players.LocalPlayer:GetMouse()
+
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local target = nil
+local aimlockEnabled = false
+local espEnabled = true
+local aimlockKey = Enum.KeyCode.F
+local uiVisible = true
+
+local espCache = {}
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 250, 0, 150)
+frame.Position = UDim2.new(0.5, -125, 0.5, -75)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Visible = true
+frame.Parent = screenGui
+
+local aimlockToggle = Instance.new("TextButton")
+aimlockToggle.Size = UDim2.new(0, 200, 0, 30)
+aimlockToggle.Position = UDim2.new(0.5, -100, 0, 20)
+aimlockToggle.Text = "Aimlock: OFF"
+aimlockToggle.Parent = frame
+
+local espToggle = Instance.new("TextButton")
+espToggle.Size = UDim2.new(0, 200, 0, 30)
+espToggle.Position = UDim2.new(0.5, -100, 0, 60)
+espToggle.Text = "ESP: ON"
+espToggle.Parent = frame
+
+local keybindBox = Instance.new("TextBox")
+keybindBox.Size = UDim2.new(0, 200, 0, 30)
+keybindBox.Position = UDim2.new(0.5, -100, 0, 100)
+keybindBox.PlaceholderText = "Set Aimlock Key"
+keybindBox.Parent = frame
+
+UserInputService.InputBegan:Connect(function(input, isTyping)
+    if isTyping then return end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        uiVisible = not uiVisible
+        frame.Visible = uiVisible
+    end
+end)
+
+keybindBox.FocusLost:Connect(function()
+    local key = Enum.KeyCode[keybindBox.Text]
+    if key then
+        aimlockKey = key
+    end
+end)
+
+aimlockToggle.MouseButton1Click:Connect(function()
+    aimlockEnabled = not aimlockEnabled
+    aimlockToggle.Text = "Aimlock: " .. (aimlockEnabled and "ON" or "OFF")
+end)
+
+espToggle.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espToggle.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+    if not espEnabled then
+        for _, esp in pairs(espCache) do
+            esp:Destroy()
+        end
+        espCache = {}
+    end
+end)
+
+local function createESP(player)
+    if player ~= localPlayer and player.Character and player.Character:FindFirstChild("Head") then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Adornee = player.Character.Head
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 2, 0)
+        billboard.AlwaysOnTop = true
+
+        local nameLabel = Instance.new("TextLabel", billboard)
+        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+        nameLabel.Text = player.Name
+        nameLabel.TextColor3 = Color3.new(1, 1, 1)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextStrokeTransparency = 0.5
+
+        billboard.Parent = player.Character.Head
+        espCache[player] = billboard
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        wait(1)
+        if espEnabled then
+            createESP(player)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if espCache[player] then
+        espCache[player]:Destroy()
+        espCache[player] = nil
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if espEnabled and not espCache[player] then
+            createESP(player)
+        end
+    end
+end)
+
+local function getNearestTargetToCursor()
+    local nearest = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local rootPart = player.Character.HumanoidRootPart
+            local screenPosition, onScreen = camera:WorldToViewportPoint(rootPart.Position)
+            local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+            local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePos).Magnitude
+            
+            if onScreen and distance < shortestDistance then
+                shortestDistance = distance
+                nearest = rootPart
+            end
+        end
+    end
+
+    return nearest
+end
+
+UserInputService.InputBegan:Connect(function(input, isTyping)
+    if isTyping then return end
+    if input.KeyCode == aimlockKey then
+        aimlockEnabled = not aimlockEnabled
+        aimlockToggle.Text = "Aimlock: " .. (aimlockEnabled and "ON" or "OFF")
+        if aimlockEnabled then
+            target = getNearestTargetToCursor()
+        else
+            target = nil
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if aimlockEnabled and target then
+        camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
+    end
+end)
+
+while true do
+    wait(1)
+    if espEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if not espCache[player] and player.Character and player.Character:FindFirstChild("Head") then
+                createESP(player)
+            end
+        end
+    end
+end
